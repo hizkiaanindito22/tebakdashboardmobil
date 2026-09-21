@@ -1,32 +1,21 @@
-// ===================================================
-// GAME STATE & LOGIC SYSTEM
-// ===================================================
-
+// Variable State Game
 let database = [];
+let filteredDatabase = [];
+let selectedBrand = 'ALL';
 let currentMode = ''; 
 let answerMode = ''; 
-let selectedBrand = 'ALL';
 let score = 0;
 let timeLeft = 60;
-let timerInterval;
+let timerInterval = null;
 let currentCar = null;
 let playedCars = [];
 let isProcessingAnswer = false;
 
 async function fetchDatabase() {
-    const loadingText = document.querySelector('#screen-loading p');
-    const loadingIcon = document.querySelector('#screen-loading i');
-
-    // Cek apakah URL masih default
-    if (typeof SUPABASE_URL === 'undefined' || SUPABASE_URL === 'PASTE_SUPABASE_URL_DISINI' || !SUPABASE_URL) {
-        loadingIcon.className = "fas fa-exclamation-triangle text-5xl text-yellow-500 mb-4";
-        loadingText.innerHTML = "Konfigurasi API Belum Diisi!<br><span class='text-sm text-zinc-500'>Buka file config.js dan masukkan URL & Key Supabase Anda.</span>";
-        loadingText.classList.add('text-center');
-        return;
-    }
-
     try {
-        loadingText.innerHTML = "Tunggu Yak...";
+        if (typeof SUPABASE_URL === 'undefined' || typeof SUPABASE_KEY === 'undefined' || SUPABASE_URL.includes('PASTE_SUPABASE')) {
+            throw new Error("Konfigurasi Supabase belum diisi di file config.js");
+        }
 
         const response = await fetch(`${SUPABASE_URL}/rest/v1/cars?select=*`, {
             headers: {
@@ -34,135 +23,153 @@ async function fetchDatabase() {
                 'Authorization': `Bearer ${SUPABASE_KEY}`
             }
         });
-        
+
         if (!response.ok) {
-            let errorDetail = '';
-            try {
-                const errData = await response.json();
-                errorDetail = errData.message || errData.hint || errData.details;
-            } catch(e) {
-                errorDetail = `HTTP Error ${response.status}`;
-            }
-            throw new Error(errorDetail || "Koneksi ditolak oleh Supabase.");
-        }
-        
-        const data = await response.json();
-        
-        if (data.length === 0) {
-             throw new Error("Tabel 'cars' sudah terhubung, tapi isinya masih 0. Masukkan minimal 1 data (Insert Row).");
+            const errData = await response.json();
+            throw new Error(errData.message || `Error status: ${response.status}`);
         }
 
-        // Format data ke bentuk yang dipahami game (Mendukung brand_cars / accepted_answer)
+        const data = await response.json();
+
+        if (!data || data.length === 0) {
+            throw new Error("Tabel 'cars' di Supabase masih kosong.");
+        }
+
         database = data.map(car => {
-            const rawAnswers = car.accepted_answer || car.accepted_answers || '';
-            const answers = rawAnswers ? rawAnswers.split(',').map(a => a.trim().toLowerCase()) : [car.full_name.toLowerCase()];
-            const brand = car.brand_cars ? car.brand_cars.trim().toUpperCase() : (car.brand ? car.brand.trim().toUpperCase() : 'LAINNYA');
+            const acceptedStr = car.accepted_answer || car.accepted_answers || '';
+            const acceptedList = acceptedStr ? acceptedStr.split(',').map(a => a.trim().toLowerCase()) : [];
+            
+            // Ekstrak nama brand (Gunakan kolom brand_cars atau ambil kata pertama)
+            let brandName = car.brand_cars ? car.brand_cars.trim().toUpperCase() : car.full_name.split(' ')[0].toUpperCase();
+
             return {
                 id: car.id,
                 fullName: car.full_name,
+                brand: brandName,
                 img: car.image_url,
-                acceptedAnswers: answers,
-                brand: brand
+                acceptedAnswers: acceptedList
             };
         });
-        
-        // Database sukses ditarik! Lanjut ke menu utama
+
+        console.log("Database Supabase Berhasil Ditarik:", database);
+        populateBrandList();
         switchScreen('screen-menu');
-        
+
     } catch (error) {
-        console.error("Supabase Error:", error);
-        loadingIcon.className = "fas fa-times-circle text-5xl text-red-500 mb-4";
-        loadingText.innerHTML = `<span class='text-red-400 font-bold'>Database Error</span><br><span class='text-xs text-zinc-400 mt-2 block bg-dark-700 p-2 rounded'>${error.message}</span>`;
-        loadingText.classList.add('text-center');
+        console.error("Gagal terhubung ke Supabase:", error);
+        
+        const spinner = document.getElementById('loading-spinner');
+        const detail = document.getElementById('loading-detail');
+        const status = document.getElementById('loading-status');
+
+        if (spinner) {
+            spinner.className = "fas fa-times-circle text-4xl text-red-500 mb-2";
+        }
+        if (status) {
+            status.innerHTML = `<p class="text-red-400 font-bold text-lg">Koneksi Database Gagal</p>`;
+        }
+        if (detail) {
+            detail.innerHTML = `<p class="text-zinc-400 text-xs mt-2 bg-dark-800 p-3 rounded-lg border border-dark-700 max-w-xs font-mono">${error.message}</p>`;
+        }
     }
+}
+
+function populateBrandList() {
+    const container = document.getElementById('brand-list');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    // Hitung jumlah total mobil per brand
+    const brandCounts = {};
+    database.forEach(c => {
+        brandCounts[c.brand] = (brandCounts[c.brand] || 0) + 1;
+    });
+
+    const uniqueBrands = Object.keys(brandCounts).sort();
+
+    // Opsi: Semua Brand
+    const allBtn = document.createElement('button');
+    allBtn.className = 'flex justify-between items-center p-4 bg-dark-700 hover:bg-dark-600 rounded-2xl border border-dark-600 text-left transition-all';
+    allBtn.innerHTML = `
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 bg-brand-500/20 text-brand-500 rounded-xl flex items-center justify-center font-bold">
+                <i class="fas fa-globe"></i>
+            </div>
+            <div>
+                <h4 class="font-bold text-white">Semua Brand</h4>
+                <p class="text-xs text-zinc-400">Mainkan semua koleksi mobil</p>
+            </div>
+        </div>
+        <span class="text-xs bg-dark-900 px-2.5 py-1 rounded-lg text-zinc-400 font-bold">${database.length}</span>
+    `;
+    allBtn.onclick = () => selectBrand('ALL');
+    container.appendChild(allBtn);
+
+    // Render masing-masing brand
+    uniqueBrands.forEach(b => {
+        const btn = document.createElement('button');
+        btn.className = 'flex justify-between items-center p-4 bg-dark-700 hover:bg-dark-600 rounded-2xl border border-dark-600 text-left transition-all';
+        btn.innerHTML = `
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 bg-dark-900 text-zinc-300 rounded-xl flex items-center justify-center font-bold uppercase text-xs">
+                    ${b.substring(0, 3)}
+                </div>
+                <div>
+                    <h4 class="font-bold text-white">${b}</h4>
+                    <p class="text-xs text-zinc-400">Koleksi khusus ${b}</p>
+                </div>
+            </div>
+            <span class="text-xs bg-dark-900 px-2.5 py-1 rounded-lg text-zinc-400 font-bold">${brandCounts[b]}</span>
+        `;
+        btn.onclick = () => selectBrand(b);
+        container.appendChild(btn);
+    });
+}
+
+function selectBrand(brandName) {
+    selectedBrand = brandName;
+    if (selectedBrand === 'ALL') {
+        filteredDatabase = [...database];
+    } else {
+        filteredDatabase = database.filter(c => c.brand === selectedBrand);
+    }
+    switchScreen('screen-answer-mode');
 }
 
 function switchScreen(screenId) {
     document.querySelectorAll('.screen').forEach(s => {
         s.classList.remove('active');
     });
-    setTimeout(() => {
-        document.getElementById(screenId).classList.add('active');
-    }, 50);
+    
+    const target = document.getElementById(screenId);
+    if (target) {
+        target.classList.add('active');
+    }
 }
 
 function selectGameMode(mode) {
     currentMode = mode;
-    populateBrandList();
     switchScreen('screen-brand');
-}
-
-function populateBrandList() {
-    const container = document.getElementById('brand-list');
-    if (!container) return;
-    container.innerHTML = '';
-
-    // Hitung jumlah mobil per brand
-    const brandCounts = {};
-    database.forEach(car => {
-        const b = car.brand || 'LAINNYA';
-        brandCounts[b] = (brandCounts[b] || 0) + 1;
-    });
-
-    // Tombol "Semua Brand"
-    const allBtn = document.createElement('button');
-    allBtn.className = 'w-full p-4 bg-brand-600 hover:bg-brand-500 rounded-2xl font-bold transition-all text-left flex justify-between items-center text-white border border-brand-400/30 col-span-1 md:col-span-2 shadow-lg mb-2';
-    allBtn.innerHTML = `
-        <div class="flex items-center space-x-3">
-            <i class="fas fa-layer-group text-xl text-brand-200"></i>
-            <div>
-                <span class="block text-base font-extrabold">Semua Brand (All)</span>
-                <span class="text-xs text-brand-200 font-normal">Mainkan semua koleksi dashboard</span>
-            </div>
-        </div>
-        <span class="bg-white/20 px-3 py-1 rounded-full text-xs font-bold">${database.length} Mobil</span>
-    `;
-    allBtn.onclick = () => chooseBrand('ALL');
-    container.appendChild(allBtn);
-
-    // Tombol per brand
-    Object.keys(brandCounts).sort().forEach(brand => {
-        const btn = document.createElement('button');
-        btn.className = 'p-4 bg-dark-700 hover:bg-dark-600 border border-dark-600 hover:border-brand-500 rounded-2xl transition-all flex justify-between items-center text-zinc-100 font-bold shadow-sm';
-        btn.innerHTML = `
-            <div class="flex items-center space-x-2">
-                <i class="fas fa-car text-brand-500 text-sm"></i>
-                <span class="capitalize tracking-wide">${brand}</span>
-            </div>
-            <span class="bg-dark-900 text-zinc-400 px-2.5 py-1 rounded-full text-xs font-bold">${brandCounts[brand]}</span>
-        `;
-        btn.onclick = () => chooseBrand(brand);
-        container.appendChild(btn);
-    });
-}
-
-function chooseBrand(brand) {
-    selectedBrand = brand;
-    switchScreen('screen-answer-mode');
 }
 
 function startGame(aMode) {
     answerMode = aMode;
-    switchScreen('screen-game');
-    
-    // Atur Visibilitas Input
+    score = 0;
+    playedCars = [];
+    isProcessingAnswer = false;
+
+    document.getElementById('score-display').innerText = score;
+
     document.getElementById('input-multiple').classList.add('hidden');
     document.getElementById('input-typing').classList.add('hidden');
-    
+
     if (answerMode === 'multiple') {
         document.getElementById('input-multiple').classList.remove('hidden');
     } else {
         document.getElementById('input-typing').classList.remove('hidden');
-        setTimeout(() => document.getElementById('type-input').focus(), 300);
     }
 
-    // Reset Game State
-    score = 0;
-    playedCars = [];
-    isProcessingAnswer = false;
-    document.getElementById('score-display').innerText = score;
-
-    // Timer Setup
     if (currentMode === 'challenge') {
         timeLeft = 60;
         document.getElementById('timer-container').classList.remove('hidden');
@@ -173,55 +180,40 @@ function startGame(aMode) {
         document.getElementById('timer-container').classList.add('hidden');
     }
 
+    switchScreen('screen-game');
     loadNextCar();
 }
 
 function loadNextCar() {
     isProcessingAnswer = false;
-    
-    // Reset UI State
-    if (answerMode === 'typing') {
-        document.getElementById('type-input').value = '';
-        document.getElementById('type-input').classList.remove('shake-animation', 'correct-animation');
-    }
-    
-    const toast = document.getElementById('feedback-toast');
-    toast.classList.remove('opacity-100');
-    toast.classList.add('opacity-0');
 
-    // Filter database berdasarkan brand yang dipilih
-    let pool = database;
-    if (selectedBrand !== 'ALL') {
-        pool = database.filter(car => car.brand === selectedBrand);
-    }
-    if (pool.length === 0) pool = database;
-
-    let availableCars = pool.filter(car => !playedCars.includes(car.id));
+    let availableCars = filteredDatabase.filter(car => !playedCars.includes(car.id));
     if (availableCars.length === 0) {
-        playedCars = []; // Reset jika mobil brand tersebut sudah dimainkan semua
-        availableCars = [...pool];
+        playedCars = [];
+        availableCars = [...filteredDatabase];
     }
 
     currentCar = availableCars[Math.floor(Math.random() * availableCars.length)];
     playedCars.push(currentCar.id);
 
-    // Handle Gambar
     const imgEl = document.getElementById('dashboard-image');
-    const loaderEl = document.getElementById('image-loader');
+    const loader = document.getElementById('image-loader');
     
-    imgEl.classList.remove('opacity-100');
+    loader.style.display = 'flex';
     imgEl.classList.add('opacity-0');
-    loaderEl.classList.remove('hidden');
-    
-    imgEl.onload = () => {
-        loaderEl.classList.add('hidden');
-        imgEl.classList.remove('opacity-0');
-        imgEl.classList.add('opacity-100');
-    };
+
     imgEl.src = currentCar.img;
+    imgEl.onload = () => {
+        loader.style.display = 'none';
+        imgEl.classList.remove('opacity-0');
+    };
 
     if (answerMode === 'multiple') {
         generateMultipleChoice(currentCar);
+    } else {
+        const typeInput = document.getElementById('type-input');
+        typeInput.value = '';
+        typeInput.focus();
     }
 }
 
@@ -229,9 +221,33 @@ function generateMultipleChoice(correctCar) {
     const container = document.getElementById('input-multiple');
     container.innerHTML = '';
 
-    let wrongCars = database.filter(c => c.id !== correctCar.id);
-    wrongCars = wrongCars.sort(() => 0.5 - Math.random()).slice(0, 3);
-    let options = [...wrongCars, correctCar].sort(() => 0.5 - Math.random());
+    const selectedOptions = [correctCar];
+
+    // 1. Opsi tambahan dari brand yang SAMA (jika ada)
+    const sameBrandCars = database.filter(c => c.brand === correctCar.brand && c.id !== correctCar.id);
+    if (sameBrandCars.length > 0) {
+        const randomSameBrand = sameBrandCars[Math.floor(Math.random() * sameBrandCars.length)];
+        selectedOptions.push(randomSameBrand);
+    }
+
+    // 2. Opsi dari brand LAIN
+    const diffBrandCars = database.filter(c => c.brand !== correctCar.brand && !selectedOptions.some(so => so.id === c.id));
+    const shuffledDiff = [...diffBrandCars].sort(() => 0.5 - Math.random());
+    
+    while (selectedOptions.length < 4 && shuffledDiff.length > 0) {
+        selectedOptions.push(shuffledDiff.pop());
+    }
+
+    // Cadangan jika opsi belum mencapai 4
+    if (selectedOptions.length < 4) {
+        const remainingCars = database.filter(c => !selectedOptions.some(so => so.id === c.id))
+                                     .sort(() => 0.5 - Math.random());
+        while (selectedOptions.length < 4 && remainingCars.length > 0) {
+            selectedOptions.push(remainingCars.pop());
+        }
+    }
+
+    const options = selectedOptions.sort(() => 0.5 - Math.random());
 
     options.forEach(option => {
         const btn = document.createElement('button');
@@ -245,156 +261,101 @@ function generateMultipleChoice(correctCar) {
     });
 }
 
-function checkSmartAnswer(rawInput, car) {
-    if (!rawInput || !car) return false;
-    const input = rawInput.trim().toLowerCase();
-    if (!input) return false;
-
-    const commonBrands = [
-        'toyota', 'honda', 'suzuki', 'daihatsu', 'mitsubishi', 'nissan', 'hyundai', 
-        'kia', 'mazda', 'isuzu', 'wuling', 'dfsk', 'chery', 'byd', 'mg', 'bmw', 
-        'mercedes', 'mercedes benz', 'benz', 'audi', 'volkswagen', 'vw', 'porsche', 
-        'ferrari', 'lamborghini', 'ford', 'chevrolet', 'jeep', 'dodge', 'subaru', 'lexus'
-    ];
-
-    const genericWords = [
-        'gen', 'generation', 'facelift', 'all', 'new', 'series', 'seri', 'type', 'spec', 'v', 'q', 'g', 'e', 'x'
-    ];
-
-    // Pembersihan string
-    const clean = str => str.replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
-    const cleanInput = clean(input);
-    const cleanFullName = clean(car.fullName.toLowerCase());
-
-    if (!cleanInput) return false;
-
-    // 1. Jangan benarkan jika HANYA menuliskan nama merek atau kata generik saja
-    if (commonBrands.includes(cleanInput) || genericWords.includes(cleanInput)) {
-        return false;
+function handleChoiceClick(btnElement, isCorrect, chosenText) {
+    isProcessingAnswer = true;
+    if (isCorrect) {
+        btnElement.classList.add('correct-animation');
+        showToast("Benar! (+10)", true);
+        score += 10;
+    } else {
+        btnElement.classList.add('shake-animation');
+        showToast(`Salah! Itu ${currentCar.fullName}`, false);
+        if (currentMode === 'challenge') score = Math.max(0, score - 5);
     }
+    document.getElementById('score-display').innerText = score;
 
-    // 2. Cek apakah ada di acceptedAnswers dari database
-    if (car.acceptedAnswers && Array.isArray(car.acceptedAnswers)) {
-        if (car.acceptedAnswers.some(ans => clean(ans.toLowerCase()) === cleanInput)) {
-            return true;
-        }
-    }
-
-    // 3. Jika input sama persis dengan nama lengkap
-    if (cleanInput === cleanFullName) return true;
-
-    // 4. Tokenisasi kata untuk pencocokan kata UTUH (mencegah potongan seperti "ava")
-    const fullNameWords = cleanFullName.split(' ');
-    const inputWords = cleanInput.split(' ');
-
-    // Ambil kata-kata model utama (bukan merek, kata generik, atau angka terpisah)
-    const modelWords = fullNameWords.filter(w => 
-        !commonBrands.includes(w) && 
-        !genericWords.includes(w) && 
-        isNaN(w) &&
-        w.length >= 2
-    );
-
-    // Cek apakah ada kata model yang cocok sebagai KATA UTUH dalam input
-    for (let modelWord of modelWords) {
-        if (inputWords.includes(modelWord)) {
-            return true;
-        }
-    }
-
-    // 5. Cek jika input adalah frasa utuh dalam nama lengkap (harus mengandung kata model utuh)
-    if (cleanFullName.includes(cleanInput)) {
-        const hasModelWord = modelWords.some(mw => inputWords.includes(mw));
-        if (hasModelWord) {
-            return true;
-        }
-    }
-
-    return false;
+    setTimeout(() => {
+        loadNextCar();
+    }, 1200);
 }
 
 function submitTypedAnswer() {
     if (isProcessingAnswer) return;
+    
     const inputEl = document.getElementById('type-input');
-    const inputVal = inputEl.value.trim();
+    const rawInput = inputEl.value;
     
-    if (inputVal === '') return;
+    if (!rawInput || rawInput.trim() === '') return;
 
-    const isCorrect = checkSmartAnswer(inputVal, currentCar);
-    
     isProcessingAnswer = true;
-    inputEl.classList.remove('shake-animation', 'correct-animation');
-    
-    void inputEl.offsetWidth; 
-
-    if(isCorrect) {
-        inputEl.classList.add('correct-animation');
-    } else {
-        inputEl.classList.add('shake-animation');
-    }
-    
-    processAnswer(isCorrect, currentCar.fullName);
-}
-
-function handleChoiceClick(btnElement, isCorrect, correctText) {
-    isProcessingAnswer = true;
-    
-    if (isCorrect) {
-        btnElement.classList.replace('bg-dark-700', 'bg-emerald-600');
-        btnElement.classList.replace('border-dark-600', 'border-emerald-500');
-    } else {
-        btnElement.classList.add('shake-animation', 'bg-red-900/30');
-        
-        const allBtns = document.getElementById('input-multiple').querySelectorAll('button');
-        allBtns.forEach(b => {
-            if (b.innerText === currentCar.fullName) {
-                b.classList.replace('bg-dark-700', 'bg-emerald-600/50');
-                b.classList.add('border-emerald-500');
-            }
-        });
-    }
-    processAnswer(isCorrect, currentCar.fullName);
-}
-
-function processAnswer(isCorrect, correctText) {
-    const toast = document.getElementById('feedback-toast');
-    toast.classList.remove('bg-emerald-500', 'bg-red-500');
+    const isCorrect = checkSmartAnswer(rawInput, currentCar);
 
     if (isCorrect) {
+        showToast("Benar! (+10)", true);
         score += 10;
-        document.getElementById('score-display').innerText = score;
-        toast.innerText = "Benar! +10";
-        toast.classList.add('bg-emerald-500', 'opacity-100');
-        setTimeout(loadNextCar, 1000);
     } else {
-        if (currentMode === 'challenge') {
-            score = Math.max(0, score - 5);
-            document.getElementById('score-display').innerText = score;
-        }
-        toast.innerText = `Salah! Itu adalah ${correctText}`;
-        toast.classList.add('bg-red-500', 'opacity-100');
-        setTimeout(loadNextCar, 2000);
+        showToast(`Salah! Itu ${currentCar.fullName}`, false);
+        if (currentMode === 'challenge') score = Math.max(0, score - 5);
     }
+
+    document.getElementById('score-display').innerText = score;
+
+    setTimeout(() => {
+        loadNextCar();
+    }, 1500);
+}
+
+function checkSmartAnswer(rawInput, car) {
+    const cleanInput = rawInput.trim().toLowerCase();
+    
+    // 1. Cek dari acceptedAnswers bawaan database Supabase
+    if (car.acceptedAnswers && car.acceptedAnswers.length > 0) {
+        if (car.acceptedAnswers.includes(cleanInput)) return true;
+    }
+
+    // 2. Cek kata utuh (Exact Word Match)
+    const cleanFullName = car.fullName.toLowerCase().replace(/[^a-z0-9\s]/g, '');
+    const cleanInputWord = cleanInput.replace(/[^a-z0-9\s]/g, '');
+
+    if (cleanInputWord.length < 3) return false;
+
+    // Abaikan jika tebakan hanya berupa nama merek mobil saja
+    const brandLower = car.brand ? car.brand.toLowerCase() : '';
+    if (cleanInputWord === brandLower) return false;
+
+    // Pengecekan dengan batasan kata utuh (Word boundary)
+    const escapedInput = cleanInputWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const wordBoundaryRegex = new RegExp(`\\b${escapedInput}\\b`, 'i');
+
+    return wordBoundaryRegex.test(cleanFullName);
+}
+
+function showToast(message, isCorrect) {
+    const toast = document.getElementById('feedback-toast');
+    toast.innerText = message;
+    
+    if (isCorrect) {
+        toast.className = "absolute bottom-4 left-1/2 transform -translate-x-1/2 px-6 py-2.5 rounded-2xl font-extrabold text-white z-30 pointer-events-none shadow-xl bg-emerald-600 transition-all duration-300 opacity-100 scale-100";
+    } else {
+        toast.className = "absolute bottom-4 left-1/2 transform -translate-x-1/2 px-6 py-2.5 rounded-2xl font-extrabold text-white z-30 pointer-events-none shadow-xl bg-red-600 transition-all duration-300 opacity-100 scale-100";
+    }
+
+    setTimeout(() => {
+        toast.classList.add('opacity-0', 'scale-95');
+    }, 1000);
 }
 
 function updateTimer() {
     timeLeft--;
-    const timeDisplay = document.getElementById('time-left');
-    timeDisplay.innerText = timeLeft;
-    
-    if(timeLeft <= 10) {
-        timeDisplay.parentElement.classList.add('animate-pulse');
-    } else {
-        timeDisplay.parentElement.classList.remove('animate-pulse');
-    }
-    
+    document.getElementById('time-left').innerText = timeLeft;
+
     if (timeLeft <= 0) {
-        endGame();
+        clearInterval(timerInterval);
+        showResult();
     }
 }
 
-function endGame() {
-    clearInterval(timerInterval);
+function showResult() {
     document.getElementById('final-score').innerText = score;
     switchScreen('screen-result');
 }
@@ -404,12 +365,16 @@ function quitGame() {
     switchScreen('screen-menu');
 }
 
+// Event listener enter key untuk mode ketik
 document.addEventListener('DOMContentLoaded', () => {
-    const typeInput = document.getElementById('type-input');
-    if (typeInput) {
-        typeInput.addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') submitTypedAnswer();
+    fetchDatabase();
+
+    const inputField = document.getElementById('type-input');
+    if (inputField) {
+        inputField.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                submitTypedAnswer();
+            }
         });
     }
-    fetchDatabase();
 });
