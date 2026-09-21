@@ -26,7 +26,7 @@ async function fetchDatabase() {
     }
 
     try {
-        loadingText.innerHTML = "Menghubungi Supabase...";
+        loadingText.innerHTML = "Tunggu Yak...";
 
         const response = await fetch(`${SUPABASE_URL}/rest/v1/cars?select=*`, {
             headers: {
