@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DashboardGuesser - Modern</title>
+    <title>DashboardGuesser - Hiz</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -26,6 +26,7 @@
                             900: '#09090b', // Zinc 950
                             800: '#18181b', // Zinc 900
                             700: '#27272a', // Zinc 800
+                            600: '#3f3f46',
                         }
                     }
                 }
@@ -39,7 +40,6 @@
             overflow-x: hidden;
         }
 
-        /* Utility classes untuk menyembunyikan elemen dengan animasi */
         .screen {
             display: none;
             opacity: 0;
@@ -50,7 +50,6 @@
             opacity: 1;
         }
 
-        /* Animasi salah/benar */
         @keyframes shake {
             0%, 100% { transform: translateX(0); }
             25% { transform: translateX(-5px); }
@@ -59,14 +58,13 @@
         }
         .shake-animation {
             animation: shake 0.4s ease-in-out;
-            border-color: #ef4444 !important; /* Red */
+            border-color: #ef4444 !important;
         }
         .correct-animation {
-            border-color: #22c55e !important; /* Green */
+            border-color: #22c55e !important;
             background-color: rgba(34, 197, 94, 0.1) !important;
         }
 
-        /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: #09090b; }
         ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 4px; }
@@ -76,8 +74,11 @@
 <body class="min-h-screen flex items-center justify-center p-4">
 
     <div id="screen-loading" class="screen active flex-col items-center justify-center space-y-4">
-        <i class="fas fa-circle-notch fa-spin text-4xl text-brand-500"></i>
-        <p class="text-zinc-400 font-medium">Memuat Database...</p>
+        <i id="loading-spinner" class="fas fa-circle-notch fa-spin text-4xl text-brand-500"></i>
+        <div id="loading-status" class="text-center">
+            <p class="text-zinc-300 font-semibold">Memuat Database...</p>
+            <p id="loading-detail" class="text-xs text-zinc-500 mt-1">Menghubungkan ke Supabase</p>
+        </div>
     </div>
 
     <div id="screen-menu" class="screen flex-col w-full max-w-md bg-dark-800 p-8 rounded-3xl border border-dark-700 shadow-2xl">
@@ -118,7 +119,6 @@
         </div>
     </div>
 
-    <!-- SCREEN: BRAND SELECTION -->
     <div id="screen-brand" class="screen flex-col w-full max-w-xl bg-dark-800 p-6 md:p-8 rounded-3xl border border-dark-700 shadow-2xl relative">
         <div class="flex justify-between items-center mb-6">
             <div>
@@ -136,7 +136,6 @@
         </div>
     </div>
 
-    <!-- SCREEN: ANSWER MODE -->
     <div id="screen-answer-mode" class="screen flex-col w-full max-w-md bg-dark-800 p-8 rounded-3xl border border-dark-700 shadow-2xl relative">
         <div class="flex justify-between items-center mb-6">
             <button onclick="switchScreen('screen-brand')" class="text-zinc-400 hover:text-white transition-colors text-sm font-semibold">
@@ -163,7 +162,6 @@
         </div>
     </div>
 
-    <!-- SCREEN: GAME AREA -->
     <div id="screen-game" class="screen flex-col w-full max-w-2xl relative">
         
         <!-- Header Info & Prominent Home Button -->
@@ -191,13 +189,11 @@
 
         <!-- Image Container -->
         <div class="relative w-full aspect-[16/10] bg-dark-800 rounded-3xl border border-dark-700 overflow-hidden shadow-xl mb-8 group">
-            <!-- Loading indicator for image -->
             <div id="image-loader" class="absolute inset-0 flex items-center justify-center bg-dark-800 z-10">
                 <i class="fas fa-spinner fa-spin text-3xl text-zinc-600"></i>
             </div>
             <img id="dashboard-image" src="" alt="Dashboard Mobil" class="w-full h-full object-cover transition-opacity duration-300 opacity-0 relative z-20">
             
-            <!-- Toast Feedback Overlay -->
             <div id="feedback-toast" class="absolute bottom-4 left-1/2 transform -translate-x-1/2 px-6 py-2 rounded-full font-bold text-white opacity-0 transition-opacity duration-300 z-30 pointer-events-none shadow-lg">
                 Benar!
             </div>
@@ -218,62 +214,9 @@
                 Tebak
             </button>
         </div>
-    </div>
-
-    <div id="screen-game" class="screen flex-col w-full max-w-2xl relative">
-        
-        <!-- Header Info -->
-        <div class="flex justify-between items-center mb-6 bg-dark-800 p-4 rounded-2xl border border-dark-700">
-            <div class="flex flex-col">
-                <span class="text-xs text-zinc-400 font-semibold uppercase tracking-wider">Skor</span>
-                <span id="score-display" class="text-2xl font-bold text-emerald-400">0</span>
-            </div>
-            
-            <div id="timer-container" class="flex flex-col items-end hidden">
-                <span class="text-xs text-zinc-400 font-semibold uppercase tracking-wider">Waktu</span>
-                <span id="timer-display" class="text-2xl font-bold text-red-500 flex items-center">
-                    <i class="fas fa-clock mr-2 text-lg"></i><span id="time-left">60</span>s
-                </span>
-            </div>
-        </div>
-
-        <!-- Image Container -->
-        <div class="relative w-full aspect-[16/10] bg-dark-800 rounded-3xl border border-dark-700 overflow-hidden shadow-xl mb-8 group">
-            <!-- Loading indicator for image -->
-            <div id="image-loader" class="absolute inset-0 flex items-center justify-center bg-dark-800 z-10">
-                <i class="fas fa-spinner fa-spin text-3xl text-zinc-600"></i>
-            </div>
-            <img id="dashboard-image" src="" alt="Dashboard Mobil" class="w-full h-full object-cover transition-opacity duration-300 opacity-0 relative z-20">
-            
-            <!-- Toast Feedback Overlay -->
-            <div id="feedback-toast" class="absolute bottom-4 left-1/2 transform -translate-x-1/2 px-6 py-2 rounded-full font-bold text-white opacity-0 transition-opacity duration-300 z-30 pointer-events-none shadow-lg">
-                Benar!
-            </div>
-        </div>
-
-        <!-- Input Area: Multiple Choice -->
-        <div id="input-multiple" class="grid grid-cols-1 md:grid-cols-2 gap-4 hidden">
-            <!-- Buttons injected by JS -->
-        </div>
-
-        <!-- Input Area: Typing -->
-        <div id="input-typing" class="hidden flex-col space-y-4">
-            <div class="relative">
-                <i class="fas fa-car absolute left-5 top-1/2 transform -translate-y-1/2 text-zinc-500"></i>
-                <input type="text" id="type-input" placeholder="Ketik seri mobil (Misal: Civic)" class="w-full bg-dark-800 border border-dark-700 rounded-2xl py-4 pl-12 pr-4 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all shadow-inner text-lg" autocomplete="off">
-            </div>
-            <button onclick="submitTypedAnswer()" class="w-full py-4 bg-brand-600 hover:bg-brand-500 text-white font-bold rounded-2xl transition-colors shadow-lg shadow-brand-500/25">
-                Tebak
-            </button>
-        </div>
-
-        <button onclick="quitGame()" class="mt-8 mx-auto text-sm text-zinc-500 hover:text-zinc-300 transition-colors">
-            Berhenti & Kembali ke Menu
-        </button>
     </div>
 
     <div id="screen-result" class="screen flex-col items-center justify-center w-full max-w-sm mx-auto bg-dark-800 p-10 rounded-3xl border border-dark-700 shadow-2xl text-center relative overflow-hidden">
-        <!-- Dekorasi background -->
         <div class="absolute -top-10 -right-10 w-32 h-32 bg-brand-500/10 rounded-full blur-2xl"></div>
         <div class="absolute -bottom-10 -left-10 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl"></div>
 
@@ -292,7 +235,6 @@
             Main Lagi
         </button>
     </div>
-    
 
     <!-- Panggil file konfigurasi kunci terlebih dahulu, kemudian logika game -->
     <script src="config.js"></script>
