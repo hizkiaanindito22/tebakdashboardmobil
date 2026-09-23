@@ -73,6 +73,25 @@
 </head>
 <body class="min-h-screen flex items-center justify-center p-4">
 
+    <!-- MODAL CHANGELOG AUTOMATIS -->
+    <div id="modal-changelog" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-dark-800 border border-dark-700 w-full max-w-md rounded-3xl p-6 shadow-2xl relative animate-in fade-in zoom-in duration-200">
+            <div class="w-12 h-12 bg-brand-500/20 text-brand-500 rounded-2xl flex items-center justify-center text-2xl mb-4">
+                <i class="fas fa-sparkles"></i>
+            </div>
+            <h3 class="text-2xl font-black text-white mb-1">🎉 Update Terbaru!</h3>
+            <p class="text-xs text-zinc-400 mb-5">Ada konten baru yang ditambahkan ke database game.</p>
+            
+            <div id="changelog-content" class="space-y-3 bg-dark-900/60 p-4 rounded-2xl border border-dark-700 mb-6 text-sm">
+                <!-- Injected by JS -->
+            </div>
+
+            <button onclick="closeChangelogModal()" class="w-full py-3.5 bg-brand-600 hover:bg-brand-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-brand-500/20">
+                Lanjut Bermain
+            </button>
+        </div>
+    </div>
+
     <div id="screen-loading" class="screen active flex-col items-center justify-center space-y-4">
         <i id="loading-spinner" class="fas fa-circle-notch fa-spin text-4xl text-brand-500"></i>
         <div id="loading-status" class="text-center">
@@ -147,9 +166,23 @@
             </button>
         </div>
         
-        <h2 class="text-2xl font-bold mb-6 text-center">Gaya Permainan</h2>
+        <h2 class="text-2xl font-bold mb-2 text-center">Gaya Permainan</h2>
+        <p class="text-xs text-zinc-400 text-center mb-6">Pilih format tebakan dan jumlah ronde</p>
+
+        <!-- Pilihan Jumlah Pertanyaan dalam 1x Play -->
+        <div class="mb-6 bg-dark-900/80 p-3.5 rounded-2xl border border-dark-700">
+            <label class="text-xs text-zinc-400 font-bold uppercase tracking-wider block mb-2 text-center">
+                <i class="fas fa-layer-group mr-1 text-brand-500"></i> Jumlah Ronde per Sesi
+            </label>
+            <div class="grid grid-cols-4 gap-2">
+                <button type="button" onclick="setRoundsLimit(5, this)" class="round-opt-btn py-2 text-xs font-bold rounded-xl bg-brand-600 text-white transition-all">5</button>
+                <button type="button" onclick="setRoundsLimit(10, this)" class="round-opt-btn py-2 text-xs font-bold rounded-xl bg-dark-700 hover:bg-dark-600 text-zinc-300 transition-all">10</button>
+                <button type="button" onclick="setRoundsLimit(15, this)" class="round-opt-btn py-2 text-xs font-bold rounded-xl bg-dark-700 hover:bg-dark-600 text-zinc-300 transition-all">15</button>
+                <button type="button" onclick="setRoundsLimit('all', this)" class="round-opt-btn py-2 text-xs font-bold rounded-xl bg-dark-700 hover:bg-dark-600 text-zinc-300 transition-all">Semua</button>
+            </div>
+        </div>
         
-        <div class="space-y-4">
+        <div class="space-y-3">
             <button onclick="startGame('multiple')" class="w-full p-4 bg-dark-700 hover:bg-dark-700/80 border border-dark-700 hover:border-emerald-500 rounded-2xl transition-all duration-200 text-left">
                 <h3 class="font-bold text-zinc-100 flex items-center"><i class="fas fa-list-ul w-6 text-emerald-500 mr-2"></i> Pilihan Ganda</h3>
                 <p class="text-xs text-zinc-400 mt-1 ml-8">Pilih 1 dari 4 opsi jawaban yang tersedia.</p>
@@ -166,13 +199,18 @@
         
         <!-- Header Info & Prominent Home Button -->
         <div class="flex justify-between items-center mb-6 bg-dark-800 p-4 rounded-2xl border border-dark-700 shadow-md">
-            <div class="flex space-x-6 items-center">
+            <div class="flex space-x-4 md:space-x-6 items-center">
                 <div class="flex flex-col">
                     <span class="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">Skor</span>
                     <span id="score-display" class="text-2xl font-bold text-emerald-400">0</span>
                 </div>
+
+                <div class="flex flex-col border-l border-dark-700 pl-4 md:pl-6">
+                    <span class="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">Ronde</span>
+                    <span id="round-display" class="text-2xl font-bold text-brand-400">1/10</span>
+                </div>
                 
-                <div id="timer-container" class="flex flex-col hidden border-l border-dark-700 pl-6">
+                <div id="timer-container" class="flex flex-col hidden border-l border-dark-700 pl-4 md:pl-6">
                     <span class="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">Waktu</span>
                     <span id="timer-display" class="text-2xl font-bold text-red-500 flex items-center">
                         <i class="fas fa-clock mr-1.5 text-base"></i><span id="time-left">60</span>s
@@ -216,23 +254,47 @@
         </div>
     </div>
 
-    <div id="screen-result" class="screen flex-col items-center justify-center w-full max-w-sm mx-auto bg-dark-800 p-10 rounded-3xl border border-dark-700 shadow-2xl text-center relative overflow-hidden">
+    <!-- SCREEN RESULT (REPORT GAME) -->
+    <div id="screen-result" class="screen flex-col items-center justify-center w-full max-w-lg mx-auto bg-dark-800 p-6 md:p-8 rounded-3xl border border-dark-700 shadow-2xl text-center relative overflow-hidden my-6">
         <div class="absolute -top-10 -right-10 w-32 h-32 bg-brand-500/10 rounded-full blur-2xl"></div>
         <div class="absolute -bottom-10 -left-10 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl"></div>
 
-        <div class="w-20 h-20 bg-dark-700 rounded-full flex items-center justify-center mb-6 relative z-10 border border-dark-600 shadow-inner">
-            <i class="fas fa-flag-checkered text-3xl text-white"></i>
+        <div class="w-16 h-16 bg-dark-700 rounded-2xl flex items-center justify-center mb-4 relative z-10 border border-dark-600 shadow-inner text-brand-500 text-2xl mx-auto">
+            <i class="fas fa-trophy"></i>
         </div>
         
-        <h2 class="text-3xl font-black mb-2 text-white relative z-10">Waktu Habis!</h2>
-        <p class="text-zinc-400 mb-8 relative z-10">Berikut adalah skor akhir kamu:</p>
+        <h2 id="result-title" class="text-2xl font-black mb-1 text-white relative z-10">Sesi Selesai!</h2>
+        <p class="text-xs text-zinc-400 mb-6 relative z-10">Laporan performa tebakan kamu:</p>
         
-        <div class="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-brand-400 mb-10 relative z-10">
-            <span id="final-score">0</span>
+        <!-- Metrics Grid -->
+        <div class="grid grid-cols-3 gap-3 w-full mb-6 relative z-10">
+            <div class="bg-dark-900/80 p-3.5 rounded-2xl border border-dark-700 flex flex-col items-center">
+                <span class="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Total Skor</span>
+                <span id="report-score" class="text-2xl font-black text-emerald-400 mt-1">0</span>
+            </div>
+            <div class="bg-dark-900/80 p-3.5 rounded-2xl border border-dark-700 flex flex-col items-center">
+                <span class="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Akurasi</span>
+                <span id="report-accuracy" class="text-2xl font-black text-brand-400 mt-1">0%</span>
+            </div>
+            <div class="bg-dark-900/80 p-3.5 rounded-2xl border border-dark-700 flex flex-col items-center">
+                <span class="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Total Waktu</span>
+                <span id="report-time" class="text-2xl font-black text-amber-400 mt-1">0s</span>
+            </div>
         </div>
 
-        <button onclick="switchScreen('screen-menu')" class="w-full py-4 bg-white text-dark-900 hover:bg-zinc-200 font-bold rounded-xl transition-colors relative z-10">
-            Main Lagi
+        <!-- Breakdown List Jawaban -->
+        <div class="w-full text-left mb-6 relative z-10">
+            <h4 class="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+                <span>Rincian Tebakan Mobil</span>
+                <span id="report-count-summary" class="text-[10px] text-zinc-500">0 Soal</span>
+            </h4>
+            <div id="report-breakdown-list" class="space-y-2 max-h-52 overflow-y-auto pr-1">
+                <!-- Injected dynamically by JS -->
+            </div>
+        </div>
+
+        <button onclick="switchScreen('screen-menu')" class="w-full py-3.5 bg-white text-dark-900 hover:bg-zinc-200 font-extrabold rounded-2xl transition-colors relative z-10 shadow-lg">
+            Kembali ke Menu Utama
         </button>
     </div>
 
