@@ -12,7 +12,7 @@ let playedCars = [];
 let isProcessingAnswer = false;
 
 // Variabel baru: Sesi Game & Metrics
-let roundsLimit = 10; // Default 10 pertanyaan per game
+let roundsLimit = 5; // Default 5 pertanyaan per game (Diselaraskan dengan UI)
 let currentRound = 0;
 let sessionHistory = []; // Array mencatat { car, isCorrect, timeSpent }
 let questionStartTime = 0;
@@ -93,27 +93,31 @@ function checkDatabaseUpdates(currentDb) {
     const newBrands = currentBrands.filter(b => !lastBrands.includes(b));
     const newCarsCount = currentDb.length - lastCarCount;
 
-    // Tampilkan changelog jika ada mobil baru atau brand baru (dan bukan first load murni)
-    if (lastCarCount > 0 && (newCarsCount > 0 || newBrands.length > 0)) {
-        showChangelogModal(newCarsCount, newBrands, currentDb.length);
-    }
+    // Tampilkan changelog jika ada mobil/brand baru ATAU saat pertama kali dibuka
+    showChangelogModal(newCarsCount > 0 ? newCarsCount : currentDb.length, newBrands, currentDb.length, lastCarCount === 0);
 
     // Update penyimpanan lokal
     localStorage.setItem('dg_car_count', currentDb.length.toString());
     localStorage.setItem('dg_brands', JSON.stringify(currentBrands));
 }
 
-function showChangelogModal(newCarsCount, newBrands, totalCars) {
+function showChangelogModal(newCarsCount, newBrands, totalCars, isFirstLoad = false) {
     const container = document.getElementById('changelog-content');
     if (!container) return;
 
     let html = '';
-    if (newCarsCount > 0) {
+    if (isFirstLoad) {
+        html += `<div class="flex items-center space-x-2 text-emerald-400 font-bold">
+            <i class="fas fa-check-circle"></i>
+            <span>Database Berhasil Terhubung!</span>
+        </div>`;
+    } else if (newCarsCount > 0) {
         html += `<div class="flex items-center space-x-2 text-emerald-400 font-bold">
             <i class="fas fa-plus-circle"></i>
             <span>+${newCarsCount} Mobil Baru Ditambahkan!</span>
         </div>`;
     }
+    
     if (newBrands.length > 0) {
         html += `<div class="flex items-start space-x-2 text-brand-400 font-medium mt-2">
             <i class="fas fa-tags mt-1"></i>
@@ -123,8 +127,9 @@ function showChangelogModal(newCarsCount, newBrands, totalCars) {
             </div>
         </div>`;
     }
+
     html += `<div class="text-xs text-zinc-400 mt-2 border-t border-dark-700 pt-2 flex justify-between">
-        <span>Total Koleksi Sekarang:</span>
+        <span>Total Koleksi Saat Ini:</span>
         <strong class="text-white">${totalCars} Mobil</strong>
     </div>`;
 
