@@ -11,6 +11,13 @@ let currentCar = null;
 let playedCars = [];
 let isProcessingAnswer = false;
 
+// Variabel baru: Sesi Game & Metrics
+let roundsLimit = 10; // Default 10 pertanyaan per game
+let currentRound = 0;
+let sessionHistory = []; // Array mencatat { car, isCorrect, timeSpent }
+let questionStartTime = 0;
+let totalGameStartTime = 0;
+
 async function fetchDatabase() {
     try {
         if (typeof SUPABASE_URL === 'undefined' || typeof SUPABASE_KEY === 'undefined' || SUPABASE_URL.includes('PASTE_SUPABASE')) {
@@ -39,7 +46,6 @@ async function fetchDatabase() {
             const acceptedStr = car.accepted_answer || car.accepted_answers || '';
             const acceptedList = acceptedStr ? acceptedStr.split(',').map(a => a.trim().toLowerCase()) : [];
             
-            // Ekstrak nama brand (Gunakan kolom brand_cars atau ambil kata pertama)
             let brandName = car.brand_cars ? car.brand_cars.trim().toUpperCase() : car.full_name.split(' ')[0].toUpperCase();
 
             return {
@@ -52,6 +58,9 @@ async function fetchDatabase() {
         });
 
         console.log("Database Supabase Berhasil Ditarik:", database);
+        
+        checkDatabaseUpdates(database);
+
         populateBrandList();
         switchScreen('screen-menu');
 
@@ -74,13 +83,75 @@ async function fetchDatabase() {
     }
 }
 
+function checkDatabaseUpdates(currentDb) {
+    const lastCarCount = parseInt(localStorage.getItem('dg_car_count') || '0', 10);
+    const lastBrandsRaw = localStorage.getItem('dg_brands') || '[]';
+    let lastBrands = [];
+    try { lastBrands = JSON.parse(lastBrandsRaw); } catch(e) { lastBrands = []; }
+
+    const currentBrands = [...new Set(currentDb.map(c => c.brand))];
+    const newBrands = currentBrands.filter(b => !lastBrands.includes(b));
+    const newCarsCount = currentDb.length - lastCarCount;
+
+    // Tampilkan changelog jika ada mobil baru atau brand baru (dan bukan first load murni)
+    if (lastCarCount > 0 && (newCarsCount > 0 || newBrands.length > 0)) {
+        showChangelogModal(newCarsCount, newBrands, currentDb.length);
+    }
+
+    // Update penyimpanan lokal
+    localStorage.setItem('dg_car_count', currentDb.length.toString());
+    localStorage.setItem('dg_brands', JSON.stringify(currentBrands));
+}
+
+function showChangelogModal(newCarsCount, newBrands, totalCars) {
+    const container = document.getElementById('changelog-content');
+    if (!container) return;
+
+    let html = '';
+    if (newCarsCount > 0) {
+        html += `<div class="flex items-center space-x-2 text-emerald-400 font-bold">
+            <i class="fas fa-plus-circle"></i>
+            <span>+${newCarsCount} Mobil Baru Ditambahkan!</span>
+        </div>`;
+    }
+    if (newBrands.length > 0) {
+        html += `<div class="flex items-start space-x-2 text-brand-400 font-medium mt-2">
+            <i class="fas fa-tags mt-1"></i>
+            <div>
+                <span>Brand Baru: </span>
+                <strong class="text-white">${newBrands.join(', ')}</strong>
+            </div>
+        </div>`;
+    }
+    html += `<div class="text-xs text-zinc-400 mt-2 border-t border-dark-700 pt-2 flex justify-between">
+        <span>Total Koleksi Sekarang:</span>
+        <strong class="text-white">${totalCars} Mobil</strong>
+    </div>`;
+
+    container.innerHTML = html;
+    document.getElementById('modal-changelog').classList.remove('hidden');
+}
+
+function closeChangelogModal() {
+    document.getElementById('modal-changelog').classList.add('hidden');
+}
+
+function setRoundsLimit(val, btnEl) {
+    roundsLimit = val;
+    document.querySelectorAll('.round-opt-btn').forEach(b => {
+        b.className = "round-opt-btn py-2 text-xs font-bold rounded-xl bg-dark-700 hover:bg-dark-600 text-zinc-300 transition-all";
+    });
+    if (btnEl) {
+        btnEl.className = "round-opt-btn py-2 text-xs font-bold rounded-xl bg-brand-600 text-white transition-all shadow-md";
+    }
+}
+
 function populateBrandList() {
     const container = document.getElementById('brand-list');
     if (!container) return;
 
     container.innerHTML = '';
 
-    // Hitung jumlah total mobil per brand
     const brandCounts = {};
     database.forEach(c => {
         brandCounts[c.brand] = (brandCounts[c.brand] || 0) + 1;
@@ -88,7 +159,6 @@ function populateBrandList() {
 
     const uniqueBrands = Object.keys(brandCounts).sort();
 
-    // Opsi: Semua Brand
     const allBtn = document.createElement('button');
     allBtn.className = 'flex justify-between items-center p-4 bg-dark-700 hover:bg-dark-600 rounded-2xl border border-dark-600 text-left transition-all';
     allBtn.innerHTML = `
@@ -106,7 +176,6 @@ function populateBrandList() {
     allBtn.onclick = () => selectBrand('ALL');
     container.appendChild(allBtn);
 
-    // Render masing-masing brand
     uniqueBrands.forEach(b => {
         const btn = document.createElement('button');
         btn.className = 'flex justify-between items-center p-4 bg-dark-700 hover:bg-dark-600 rounded-2xl border border-dark-600 text-left transition-all';
@@ -157,7 +226,10 @@ function startGame(aMode) {
     answerMode = aMode;
     score = 0;
     playedCars = [];
+    sessionHistory = [];
+    currentRound = 0;
     isProcessingAnswer = false;
+    totalGameStartTime = Date.now();
 
     document.getElementById('score-display').innerText = score;
 
@@ -187,6 +259,17 @@ function startGame(aMode) {
 function loadNextCar() {
     isProcessingAnswer = false;
 
+    // Cek batas max ronde
+    const maxRounds = (roundsLimit === 'all') ? filteredDatabase.length : parseInt(roundsLimit, 10);
+    if (currentRound >= maxRounds) {
+        finishGameSession();
+        return;
+    }
+
+    currentRound++;
+    const maxDisplay = (roundsLimit === 'all') ? filteredDatabase.length : maxRounds;
+    document.getElementById('round-display').innerText = `${currentRound}/${maxDisplay}`;
+
     let availableCars = filteredDatabase.filter(car => !playedCars.includes(car.id));
     if (availableCars.length === 0) {
         playedCars = [];
@@ -195,6 +278,7 @@ function loadNextCar() {
 
     currentCar = availableCars[Math.floor(Math.random() * availableCars.length)];
     playedCars.push(currentCar.id);
+    questionStartTime = Date.now();
 
     const imgEl = document.getElementById('dashboard-image');
     const loader = document.getElementById('image-loader');
@@ -223,14 +307,12 @@ function generateMultipleChoice(correctCar) {
 
     const selectedOptions = [correctCar];
 
-    // 1. Opsi tambahan dari brand yang SAMA (jika ada)
     const sameBrandCars = database.filter(c => c.brand === correctCar.brand && c.id !== correctCar.id);
     if (sameBrandCars.length > 0) {
         const randomSameBrand = sameBrandCars[Math.floor(Math.random() * sameBrandCars.length)];
         selectedOptions.push(randomSameBrand);
     }
 
-    // 2. Opsi dari brand LAIN
     const diffBrandCars = database.filter(c => c.brand !== correctCar.brand && !selectedOptions.some(so => so.id === c.id));
     const shuffledDiff = [...diffBrandCars].sort(() => 0.5 - Math.random());
     
@@ -238,7 +320,6 @@ function generateMultipleChoice(correctCar) {
         selectedOptions.push(shuffledDiff.pop());
     }
 
-    // Cadangan jika opsi belum mencapai 4
     if (selectedOptions.length < 4) {
         const remainingCars = database.filter(c => !selectedOptions.some(so => so.id === c.id))
                                      .sort(() => 0.5 - Math.random());
@@ -263,6 +344,15 @@ function generateMultipleChoice(correctCar) {
 
 function handleChoiceClick(btnElement, isCorrect, chosenText) {
     isProcessingAnswer = true;
+    const timeSpent = Math.round((Date.now() - questionStartTime) / 1000);
+
+    sessionHistory.push({
+        car: currentCar,
+        userAnswer: chosenText,
+        isCorrect: isCorrect,
+        timeSpent: timeSpent
+    });
+
     if (isCorrect) {
         btnElement.classList.add('correct-animation');
         showToast("Benar! (+10)", true);
@@ -288,7 +378,15 @@ function submitTypedAnswer() {
     if (!rawInput || rawInput.trim() === '') return;
 
     isProcessingAnswer = true;
+    const timeSpent = Math.round((Date.now() - questionStartTime) / 1000);
     const isCorrect = checkSmartAnswer(rawInput, currentCar);
+
+    sessionHistory.push({
+        car: currentCar,
+        userAnswer: rawInput.trim(),
+        isCorrect: isCorrect,
+        timeSpent: timeSpent
+    });
 
     if (isCorrect) {
         showToast("Benar! (+10)", true);
@@ -308,22 +406,18 @@ function submitTypedAnswer() {
 function checkSmartAnswer(rawInput, car) {
     const cleanInput = rawInput.trim().toLowerCase();
     
-    // 1. Cek dari acceptedAnswers bawaan database Supabase
     if (car.acceptedAnswers && car.acceptedAnswers.length > 0) {
         if (car.acceptedAnswers.includes(cleanInput)) return true;
     }
 
-    // 2. Cek kata utuh (Exact Word Match)
     const cleanFullName = car.fullName.toLowerCase().replace(/[^a-z0-9\s]/g, '');
     const cleanInputWord = cleanInput.replace(/[^a-z0-9\s]/g, '');
 
     if (cleanInputWord.length < 3) return false;
 
-    // Abaikan jika tebakan hanya berupa nama merek mobil saja
     const brandLower = car.brand ? car.brand.toLowerCase() : '';
     if (cleanInputWord === brandLower) return false;
 
-    // Pengecekan dengan batasan kata utuh (Word boundary)
     const escapedInput = cleanInputWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const wordBoundaryRegex = new RegExp(`\\b${escapedInput}\\b`, 'i');
 
@@ -351,13 +445,64 @@ function updateTimer() {
 
     if (timeLeft <= 0) {
         clearInterval(timerInterval);
-        showResult();
+        finishGameSession();
     }
 }
 
-function showResult() {
-    document.getElementById('final-score').innerText = score;
+function finishGameSession() {
+    clearInterval(timerInterval);
+
+    const totalTimeSpent = Math.round((Date.now() - totalGameStartTime) / 1000);
+    const correctCount = sessionHistory.filter(h => h.isCorrect).length;
+    const totalQuestions = sessionHistory.length;
+    const accuracy = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
+
+    document.getElementById('report-score').innerText = score;
+    document.getElementById('report-accuracy').innerText = `${accuracy}%`;
+    document.getElementById('report-time').innerText = `${totalTimeSpent}s`;
+    document.getElementById('report-count-summary').innerText = `${correctCount}/${totalQuestions} Benar`;
+
+    // Render rincian tebakan
+    const listContainer = document.getElementById('report-breakdown-list');
+    listContainer.innerHTML = '';
+
+    if (sessionHistory.length === 0) {
+        listContainer.innerHTML = `<p class="text-xs text-zinc-500 text-center py-4">Belum ada soal dijawab.</p>`;
+    } else {
+        sessionHistory.forEach((item, index) => {
+            const row = document.createElement('div');
+            row.className = `p-3 rounded-2xl border flex items-center justify-between text-xs transition-all ${
+                item.isCorrect 
+                    ? 'bg-emerald-500/10 border-emerald-500/20 text-zinc-200' 
+                    : 'bg-red-500/10 border-red-500/20 text-zinc-200'
+            }`;
+
+            row.innerHTML = `
+                <div class="flex items-center space-x-3 overflow-hidden pr-2">
+                    <span class="w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 ${
+                        item.isCorrect ? 'bg-emerald-500 text-dark-900' : 'bg-red-500 text-white'
+                    }">${index + 1}</span>
+                    <div class="truncate">
+                        <p class="font-bold truncate">${item.car.fullName}</p>
+                        <p class="text-[10px] text-zinc-400 truncate">Jawaban: ${item.userAnswer}</p>
+                    </div>
+                </div>
+                <div class="text-right shrink-0">
+                    <span class="font-bold text-zinc-300 block">${item.timeSpent}s</span>
+                    <span class="text-[10px] ${item.isCorrect ? 'text-emerald-400' : 'text-red-400'} font-semibold">
+                        ${item.isCorrect ? '+10' : '0'}
+                    </span>
+                </div>
+            `;
+            listContainer.appendChild(row);
+        });
+    }
+
     switchScreen('screen-result');
+}
+
+function showResult() {
+    finishGameSession();
 }
 
 function quitGame() {
@@ -365,7 +510,6 @@ function quitGame() {
     switchScreen('screen-menu');
 }
 
-// Event listener enter key untuk mode ketik
 document.addEventListener('DOMContentLoaded', () => {
     fetchDatabase();
 
